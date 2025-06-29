@@ -94,6 +94,97 @@
         #editor {
             height: calc(100vh - 48px - 42px); /* 100% 视口高度减去标签页和工具栏的高度 */
         }
+
+        /* 密码验证弹窗样式 */
+        .password-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .password-modal-content {
+            background-color: #fff;
+            margin: 15% auto;
+            padding: 30px;
+            border-radius: 8px;
+            width: 400px;
+            max-width: 90%;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+
+        .password-modal h3 {
+            margin-top: 0;
+            color: #333;
+            font-size: 18px;
+        }
+
+        .password-input {
+            width: 100%;
+            padding: 12px;
+            margin: 15px 0;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+
+        .password-input:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        .password-buttons {
+            margin-top: 20px;
+        }
+
+        .password-btn {
+            padding: 10px 20px;
+            margin: 0 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s ease;
+        }
+
+        .password-btn-confirm {
+            background-color: #007bff;
+            color: white;
+        }
+
+        .password-btn-confirm:hover {
+            background-color: #0056b3;
+        }
+
+        .password-btn-cancel {
+            background-color: #6c757d;
+            color: white;
+        }
+
+        .password-btn-cancel:hover {
+            background-color: #545b62;
+        }
+
+        .password-error {
+            color: #dc3545;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .remember-password {
+            margin: 15px 0;
+            text-align: left;
+        }
+
+        .remember-password input {
+            margin-right: 8px;
+        }
     </style>
 </head>
 <body>
@@ -106,6 +197,25 @@
     </div>
     <!-- Quill 编辑器容器 -->
     <div id="editor"></div>
+
+    <!-- 密码验证弹窗 -->
+    <div id="password-modal" class="password-modal">
+        <div class="password-modal-content">
+            <h3>🔒 请输入密码以保存笔记</h3>
+            <input type="password" id="password-input" class="password-input" placeholder="请输入密码" />
+            <div class="remember-password">
+                <label>
+                    <input type="checkbox" id="remember-password" checked />
+                    记住密码（保存在本地cookies中）
+                </label>
+            </div>
+            <div class="password-error" id="password-error"></div>
+            <div class="password-buttons">
+                <button class="password-btn password-btn-confirm" id="password-confirm">确认保存</button>
+                <button class="password-btn password-btn-cancel" id="password-cancel">取消</button>
+            </div>
+        </div>
+    </div>
 
     <!-- 引入 jQuery 和 Toast UI Editor 的 JS 文件 -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -129,7 +239,7 @@
                     formData.append('file', blob);
 
                     $.ajax({
-                        url: window.location.href,
+                        url: window.location.origin + window.location.pathname,
                         type: 'POST',
                         data: formData,
                         processData: false,
@@ -179,7 +289,7 @@
             formData.append('file', file);
 
             $.ajax({
-                url: window.location.href,
+                url: window.location.origin + window.location.pathname,
                 type: 'POST',
                 data: formData,
                 processData: false,
@@ -199,7 +309,7 @@
         // 上传 Base64 编码的图片
         function uploadImage(dataUrl) {
             $.ajax({
-                url: window.location.href,
+                url: window.location.origin + window.location.pathname,
                 type: 'POST',
                 data: {
                     image: dataUrl
@@ -214,19 +324,263 @@
             });
         }
 
+        // Cookie 管理工具
+        const cookieManager = {
+            set: function(name, value, days = 30) {
+                const expires = new Date();
+                expires.setTime(expires.getTime() + (days * 24 * 60 * 60 * 1000));
+                document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/`;
+            },
+            get: function(name) {
+                const nameEQ = name + "=";
+                const ca = document.cookie.split(';');
+                for(let i = 0; i < ca.length; i++) {
+                    let c = ca[i];
+                    while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+                    if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+                }
+                return null;
+            },
+            delete: function(name) {
+                document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/`;
+            }
+        };
+
+        // 密码验证管理
+        const passwordManager = {
+            currentPassword: null,
+            failedAttempts: 0,
+            maxFailedAttempts: 3,
+
+            // 从cookies获取保存的密码
+            getSavedPassword: function() {
+                return cookieManager.get('notepad_password');
+            },
+
+            // 保存密码到cookies
+            savePassword: function(password, remember) {
+                if (remember) {
+                    cookieManager.set('notepad_password', password, 30); // 保存30天
+                }
+                this.currentPassword = password;
+                this.failedAttempts = 0; // 重置失败次数
+            },
+
+            // 清除保存的密码
+            clearPassword: function() {
+                cookieManager.delete('notepad_password');
+                this.currentPassword = null;
+                this.failedAttempts = 0;
+            },
+
+            // 记录密码验证失败
+            recordFailedAttempt: function() {
+                this.failedAttempts++;
+                if (this.failedAttempts >= this.maxFailedAttempts) {
+                    // 如果失败次数过多，清除保存的密码
+                    this.clearPassword();
+                    return true; // 返回true表示需要重新输入
+                }
+                return false;
+            },
+
+            // 检查是否有有效密码
+            hasValidPassword: function() {
+                return this.currentPassword || this.getSavedPassword();
+            },
+
+            // 获取当前密码
+            getCurrentPassword: function() {
+                return this.currentPassword || this.getSavedPassword();
+            },
+
+            // 重置失败次数
+            resetFailedAttempts: function() {
+                this.failedAttempts = 0;
+            }
+        };
+
+        // 密码验证弹窗管理
+        const passwordModal = {
+            modal: null,
+            input: null,
+            errorDiv: null,
+            rememberCheckbox: null,
+            onConfirm: null,
+
+            init: function() {
+                this.modal = document.getElementById('password-modal');
+                this.input = document.getElementById('password-input');
+                this.errorDiv = document.getElementById('password-error');
+                this.rememberCheckbox = document.getElementById('remember-password');
+
+                // 绑定事件
+                document.getElementById('password-confirm').addEventListener('click', () => this.confirm());
+                document.getElementById('password-cancel').addEventListener('click', () => this.cancel());
+
+                // 回车键确认
+                this.input.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.confirm();
+                    }
+                });
+
+                // 点击背景关闭
+                this.modal.addEventListener('click', (e) => {
+                    if (e.target === this.modal) {
+                        this.cancel();
+                    }
+                });
+            },
+
+            show: function(callback) {
+                this.onConfirm = callback;
+                this.input.value = '';
+                this.errorDiv.textContent = '';
+                this.modal.style.display = 'block';
+                this.input.focus();
+            },
+
+            hide: function() {
+                this.modal.style.display = 'none';
+                this.onConfirm = null;
+            },
+
+            confirm: function() {
+                const password = this.input.value.trim();
+                if (!password) {
+                    this.showError('请输入密码');
+                    return;
+                }
+
+                const remember = this.rememberCheckbox.checked;
+                passwordManager.savePassword(password, remember);
+
+                if (this.onConfirm) {
+                    this.onConfirm(password);
+                }
+                this.hide();
+            },
+
+            cancel: function() {
+                this.hide();
+            },
+
+            showError: function(message) {
+                this.errorDiv.textContent = message;
+            }
+        };
+
         // 自动保存功能
         let saveTimeout;
+        let isInitializing = true; // 标记是否正在初始化
+
         function saveContent() {
+            // 如果正在初始化，不执行保存
+            if (isInitializing) {
+                return;
+            }
+
             clearTimeout(saveTimeout);
             saveTimeout = setTimeout(function() {
-                let content = editor.getMarkdown();
-                $.post(window.location.href, {
-                    content: content,
-                noteId: tabs.current // 当前标签页的 ID
-            }, function(response) {
-                    console.log('内容已保存');
-                });
+                performSave();
             }, 1000);
+        }
+
+        // 执行保存操作
+        function performSave() {
+            const content = editor.getMarkdown();
+
+            // 如果内容为空或只有空白字符，不保存
+            if (!content || content.trim() === '') {
+                console.log('内容为空，跳过保存');
+                return;
+            }
+
+            const password = passwordManager.getCurrentPassword();
+
+            if (!password) {
+                // 如果没有密码，显示密码输入弹窗
+                passwordModal.show((inputPassword) => {
+                    doSave(inputPassword);
+                });
+            } else {
+                // 如果有密码，直接保存
+                doSave(password);
+            }
+        }
+
+        // 实际的保存操作
+        function doSave(password) {
+            const content = editor.getMarkdown();
+
+            // 再次检查内容是否为空（双重保险）
+            if (!content || content.trim() === '') {
+                console.log('保存时发现内容为空，取消保存');
+                return;
+            }
+
+            // 使用基础URL，避免包含note参数
+            const saveUrl = window.location.origin + window.location.pathname;
+            $.ajax({
+                url: saveUrl,
+                type: 'POST',
+                data: {
+                    content: content,
+                    noteId: tabs.current,
+                    password: password
+                },
+                success: function(response) {
+                    if (response.success) {
+                        console.log('内容已保存');
+                        // 保存成功，重置失败次数
+                        passwordManager.resetFailedAttempts();
+                    } else {
+                        handlePasswordError(response);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    // 检查是否是密码错误（401状态码）
+                    if (xhr.status === 401) {
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            handlePasswordError(response);
+                        } catch (e) {
+                            // 如果无法解析响应，按密码错误处理
+                            handlePasswordError({error: 'Invalid password'});
+                        }
+                    } else {
+                        // 其他网络错误
+                        alert('保存失败，请检查网络连接。错误信息: ' + error);
+                    }
+                }
+            });
+        }
+
+        // 处理密码错误的统一函数
+        function handlePasswordError(response) {
+            if (response.error === 'Invalid password') {
+                // 记录失败尝试
+                const shouldClearPassword = passwordManager.recordFailedAttempt();
+
+                let errorMessage = `密码错误，请重新输入 (${passwordManager.failedAttempts}/${passwordManager.maxFailedAttempts})`;
+
+                if (shouldClearPassword) {
+                    errorMessage = '密码错误次数过多，已清除保存的密码，请重新输入正确密码';
+                }
+
+                // 显示密码输入弹窗
+                passwordModal.show((newPassword) => {
+                    doSave(newPassword);
+                });
+
+                // 延迟显示错误信息，确保弹窗已经显示
+                setTimeout(() => {
+                    passwordModal.showError(errorMessage);
+                }, 100);
+            } else {
+                alert('保存失败: ' + (response.error || '未知错误'));
+            }
         }
 
         // 标签页管理对象
@@ -272,7 +626,18 @@
                 this.current = id;
                 this.save();
                 this.render();
-                this.loadContent(id);
+                // 创建新标签页时，直接设置空内容，不需要AJAX请求
+                isInitializing = true;
+                editor.setMarkdown('', false);
+                // 更新URL
+                const baseUrl = window.location.pathname;
+                const url = new URL(baseUrl, window.location.origin);
+                url.searchParams.set('note', id);
+                window.history.replaceState({}, '', url.toString());
+                // 延迟允许自动保存
+                setTimeout(() => {
+                    isInitializing = false;
+                }, 500);
             },
 
             // 关闭标签页
@@ -302,12 +667,15 @@
 
             // 加载笔记内容
             loadContent(id) {
+                // 标记正在初始化
+                isInitializing = true;
+
                 // 更新浏览器 URL，不刷新页面
                 const baseUrl = window.location.pathname;
                 const url = new URL(baseUrl, window.location.origin);
                 url.searchParams.set('note', id);
                 window.history.replaceState({}, '', url.toString());
-                
+
                 // 使用 AJAX 加载笔记内容
                 $.ajax({
                     url: baseUrl,
@@ -317,7 +685,21 @@
                         'X-Requested-With': 'XMLHttpRequest' // 标记为 AJAX 请求
                     },
                     success: function(response) {
-                        editor.setMarkdown(response, false); // 设置内容
+                        // 设置内容，如果是空内容（新笔记）也正常处理
+                        editor.setMarkdown(response || '', false);
+                        // 延迟一下再允许自动保存，确保编辑器完全初始化
+                        setTimeout(() => {
+                            isInitializing = false;
+                        }, 500);
+                    },
+                    error: function(xhr, status, error) {
+                        // 加载笔记时的错误处理
+                        console.log('笔记不存在，创建新笔记:', id);
+                        editor.setMarkdown('', false);
+                        // 延迟一下再允许自动保存
+                        setTimeout(() => {
+                            isInitializing = false;
+                        }, 500);
                     }
                 });
             },
@@ -356,6 +738,9 @@
                 });
             }
         };
+
+        // 初始化密码弹窗
+        passwordModal.init();
 
         // 初始化标签页系统
         tabs.init();

@@ -31,6 +31,25 @@ var indexHTML embed.FS
 // uploadDir 定义了用于存储上传文件的目录名称。
 const uploadDir = "updata"
 
+// 密码保护配置
+const (
+	// 默认密码（您可以修改这个密码）
+	defaultPassword = "notepad123"
+
+	// 是否启用密码保护（设为false可完全禁用密码保护）
+	enablePasswordProtection = true
+)
+
+// 密码验证函数
+func verifyPassword(inputPassword string) bool {
+	// 如果禁用了密码保护，总是返回true
+	if !enablePasswordProtection {
+		return true
+	}
+	// 这里使用简单的字符串比较，您可以根据需要改为更安全的哈希验证
+	return inputPassword == defaultPassword
+}
+
 // main 函数是程序的入口点。
 func main() {
 	// 确保上传目录存在，如果不存在则创建它。
@@ -93,6 +112,16 @@ func getSafeFileName(id string) string {
 func saveNoteHandler(w http.ResponseWriter, r *http.Request) {
 	noteID := r.FormValue("noteId")
 	content := r.FormValue("content")
+	password := r.FormValue("password")
+
+	// 只有在启用密码保护时才验证密码
+	if enablePasswordProtection {
+		if !verifyPassword(password) {
+			jsonResponse(w, map[string]interface{}{"success": false, "error": "Invalid password"}, http.StatusUnauthorized)
+			return
+		}
+	}
+
 	filename := filepath.Join(uploadDir, getSafeFileName(noteID))
 
 	// 将内容写入文件。
