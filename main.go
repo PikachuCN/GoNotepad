@@ -23,8 +23,9 @@ import (
 	"golang.org/x/image/webp"
 )
 
-//go:embed index.html
 // indexHTML 使用 embed.FS 嵌入 index.html 文件，以便在编译后的二进制文件中直接提供前端页面。
+//
+//go:embed index.html
 var indexHTML embed.FS
 
 // uploadDir 定义了用于存储上传文件的目录名称。
@@ -170,7 +171,7 @@ func pasteImageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 返回包含新图片 URL 的成功响应。
-	jsonResponse(w, map[string]interface{}{"success": true, "url": filename}, http.StatusOK)
+	jsonResponse(w, map[string]interface{}{"success": true, "url": strings.ReplaceAll(filename, "\\", "/")}, http.StatusOK)
 }
 
 // uploadFileHandler 处理通过文件上传表单上传的文件。
@@ -220,7 +221,7 @@ func uploadFileHandler(w http.ResponseWriter, r *http.Request) {
 			jsonResponse(w, map[string]interface{}{"success": false, "error": "Failed to convert image to JPG"}, http.StatusInternalServerError)
 			return
 		}
-		jsonResponse(w, map[string]interface{}{"success": true, "url": filename, "filename": strings.TrimSuffix(handler.Filename, ext) + ".jpg"}, http.StatusOK)
+		jsonResponse(w, map[string]interface{}{"success": true, "url": strings.ReplaceAll(filename, "\\", "/"), "filename": strings.TrimSuffix(handler.Filename, ext) + ".jpg"}, http.StatusOK)
 
 	} else {
 		// 处理其他类型的文件。
@@ -258,7 +259,7 @@ func uploadFileHandler(w http.ResponseWriter, r *http.Request) {
 			jsonResponse(w, map[string]interface{}{"success": false, "error": "Failed to save file"}, http.StatusInternalServerError)
 			return
 		}
-		jsonResponse(w, map[string]interface{}{"success": true, "url": filename, "filename": handler.Filename}, http.StatusOK)
+		jsonResponse(w, map[string]interface{}{"success": true, "url": strings.ReplaceAll(filename, "\\", "/"), "filename": handler.Filename}, http.StatusOK)
 	}
 }
 

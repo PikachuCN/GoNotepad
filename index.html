@@ -3,8 +3,8 @@
 <head>
     <title>在线记事本</title>
     <meta charset="UTF-8">
-    <!-- 引入 Quill 富文本编辑器的 CSS 文件 -->
-    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <!-- 引入 Toast UI Editor 的 CSS 文件 -->
+    <link rel="stylesheet" href="https://uicdn.toast.com/editor/latest/toastui-editor.min.css" />
     <style>
         /* CSS 样式部分 */
         html, body {
@@ -13,19 +13,6 @@
             height: 100vh; /* 视口高度 */
             overflow: hidden; /* 隐藏溢出内容 */
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; /* 设置字体 */
-        }
-        /* Quill 编辑器工具栏样式 */
-        .ql-toolbar.ql-snow {
-            border: none;
-            border-bottom: 1px solid #e0e0e0;
-        }
-        /* Quill 编辑器容器样式 */
-        .ql-container.ql-snow {
-            border: none;
-        }
-        /* 编辑器字体大小 */
-        .ql-editor {
-            font-size: 16px;
         }
         /* 标签页容器样式 */
         #tabs-container {
@@ -120,74 +107,52 @@
     <!-- Quill 编辑器容器 -->
     <div id="editor"></div>
 
-    <!-- 引入 Quill 和 jQuery 的 JS 文件 -->
-    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <!-- 引入 jQuery 和 Toast UI Editor 的 JS 文件 -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://uicdn.toast.com/editor/latest/toastui-editor-all.min.js"></script>
     <script>
-        // 初始化 Quill 编辑器
-        var quill = new Quill('#editor', {
-            theme: 'snow',
-            modules: {
-                toolbar: {
-                    container: [
-                        [{ 'header': [1, 2, 3, false] }], // 标题
-                        ['bold', 'italic', 'underline'],   // 粗体、斜体、下划线
-                        ['image']                          // 插入图片
-                    ],
-                    handlers: {
-                        // 自定义图片上传处理
-                        'image': function() {
-                            const input = document.createElement('input');
-                            input.setAttribute('type', 'file');
-                            input.setAttribute('accept', 'image/*');
-                            input.click();
+        // 初始化 Toast UI Editor
+        const editor = new toastui.Editor({
+            el: document.querySelector('#editor'),
+            height: 'calc(100vh - 48px - 42px)',
+            initialEditType: 'markdown',
+            previewStyle: 'vertical',
+            events: {
+                change: function() {
+                    // 自动保存
+                    saveContent();
+                }
+            },
+            hooks: {
+                addImageBlobHook: (blob, callback) => {
+                    const formData = new FormData();
+                    formData.append('file', blob);
 
-                            input.onchange = function() {
-                                const file = input.files[0];
-                                if (file) {
-                                    const formData = new FormData();
-                                    formData.append('file', file);
-                                    // 使用 AJAX 上传图片
-                                    $.ajax({
-                                        url: window.location.href,
-                                        type: 'POST',
-                                        data: formData,
-                                        processData: false,
-                                        contentType: false,
-                                        success: function(response) {
-                                            if (response.success) {
-                                                const range = quill.getSelection(true);
-                                                // 在编辑器中插入图片
-                                                quill.insertEmbed(range.index, 'image', response.url);
-                                            } else {
-                                                alert(response.error || '上传失败');
-                                            }
-                                        }
-                                    });
-                                }
-                            };
+                    $.ajax({
+                        url: window.location.href,
+                        type: 'POST',
+                        data: formData,
+                        processData: false,
+                        contentType: false,
+                        success: function(response) {
+                            if (response.success) {
+                                // 返回图片 URL
+                                callback(response.url, 'alt text');
+                            } else {
+                                alert(response.error || '上传失败');
+                            }
                         }
-                    }
+                    });
                 }
             }
         });
 
-        // 处理文件拖放上传
-        quill.root.addEventListener('drop', function(event) {
+        // 拖放上传
+        document.getElementById('editor').addEventListener('drop', function(event) {
             event.preventDefault();
             const files = event.dataTransfer.files;
-            handleFiles(files);
-        });
-
-        // 处理文件粘贴上传
-        quill.root.addEventListener('paste', function(event) {
-            event.preventDefault();
-            const items = (event.clipboardData || event.originalEvent.clipboardData).items;
-            for (let item of items) {
-                if (item.kind === 'file') {
-                    const file = item.getAsFile();
-                    handleFiles([file]);
-                }
+            if (files.length > 0) {
+                handleFiles(files);
             }
         });
 
@@ -221,11 +186,9 @@
                 contentType: false,
                 success: function(response) {
                     if (response.success) {
-                        let range = quill.getSelection() || { index: quill.getLength() };
                         // 插入文件链接
-                        const text = `📎 ${response.filename}`;
-                        quill.insertText(range.index, text, 'link', response.url);
-                        quill.insertText(range.index + text.length, ' ', 'normal');
+                        const text = `[📎 ${response.filename}](${response.url})`;
+                        editor.insertText(text);
                     } else {
                         alert(response.error || '上传失败');
                     }
@@ -243,9 +206,9 @@
                 },
                 success: function(response) {
                     if (response.success) {
-                        let range = quill.getSelection() || { index: quill.getLength() };
                         // 插入图片
-                        quill.insertEmbed(range.index, 'image', response.url);
+                        const imageUrl = `![pasted image](${response.url})`;
+                        editor.insertText(imageUrl);
                     }
                 }
             });
@@ -253,20 +216,17 @@
 
         // 自动保存功能
         let saveTimeout;
-        quill.on('text-change', function() {
-            clearTimeout(saveTimeout);
-            // 延迟 1 秒后保存内容
-            saveTimeout = setTimeout(saveContent, 1000);
-        });
-
         function saveContent() {
-            let content = quill.root.innerHTML;
-            $.post(window.location.href, {
-                content: content,
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(function() {
+                let content = editor.getMarkdown();
+                $.post(window.location.href, {
+                    content: content,
                 noteId: tabs.current // 当前标签页的 ID
             }, function(response) {
-                console.log('内容已保存');
-            });
+                    console.log('内容已保存');
+                });
+            }, 1000);
         }
 
         // 标签页管理对象
@@ -357,8 +317,7 @@
                         'X-Requested-With': 'XMLHttpRequest' // 标记为 AJAX 请求
                     },
                     success: function(response) {
-                        quill.setContents([], 'silent'); // 清空编辑器
-                        quill.clipboard.dangerouslyPasteHTML(0, response, 'silent'); // 粘贴内容
+                        editor.setMarkdown(response, false); // 设置内容
                     }
                 });
             },
