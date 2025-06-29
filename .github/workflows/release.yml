@@ -1,0 +1,81 @@
+name: Release Go Binaries
+
+on:
+  push:
+    tags:
+      - 'v*' # 当一个 v 开头的 tag 被推送时触发，例如 v1.0, v1.1.0
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22' # 指定 Go 版本
+
+      - name: Build for Linux (amd64)
+        run: GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o online-notepad-linux-amd64 main.go
+
+      - name: Build for Windows (amd64)
+        run: GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o online-notepad-windows-amd64.exe main.go
+
+      - name: Build for macOS (amd64)
+        run: GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o online-notepad-macos-amd64 main.go
+        
+      - name: Build for macOS (arm64)
+        run: GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o online-notepad-macos-arm64 main.go
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Linux binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./online-notepad-linux-amd64
+          asset_name: online-notepad-linux-amd64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Windows binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./online-notepad-windows-amd64.exe
+          asset_name: online-notepad-windows-amd64.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload macOS (amd64) binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./online-notepad-macos-amd64
+          asset_name: online-notepad-macos-amd64
+          asset_content_type: application/octet-stream
+          
+      - name: Upload macOS (arm64) binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./online-notepad-macos-arm64
+          asset_name: online-notepad-macos-arm64
+          asset_content_type: application/octet-stream
